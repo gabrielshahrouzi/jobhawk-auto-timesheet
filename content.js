@@ -1,4 +1,6 @@
-console.log("✅ Content script loaded on JobHawk");
+console.log("✅ content.js loaded on JobHawk");
+
+const PENDING_KEY = "pendingTimesheet";
 
 const FIELD_IDS = {
   day: "Skin_body_ManageTimesheetControl_Day1",
@@ -8,74 +10,18 @@ const FIELD_IDS = {
   endHour: "Skin_body_ManageTimesheetControl_EndHour1",
   endMinute: "Skin_body_ManageTimesheetControl_EndMinute1",
   endAmPm: "Skin_body_ManageTimesheetControl_EndAmPm1",
-  addButton: "Skin_body_ManageTimesheetControl_tctl26",
 };
 
-function findElementInFrames(id) {
-  console.log("[JobHawk Timesheet] Searching for element:", id);
+const ADD_ENTRY_BUTTON_ID = "Skin_body_ManageTimesheetControl_ctl25";
 
-  function searchInDocument(doc, location) {
-    const element = doc.getElementById(id);
-    if (element) {
-      console.log("[JobHawk Timesheet] Found in", location, ":", id);
-      return element;
-    }
-
-    const iframes = doc.querySelectorAll("iframe");
-    console.log(
-      "[JobHawk Timesheet] Searching",
-      iframes.length,
-      "iframe(s) in",
-      location,
-      "for:",
-      id
-    );
-
-    for (let i = 0; i < iframes.length; i++) {
-      try {
-        const frameDoc =
-          iframes[i].contentDocument || iframes[i].contentWindow?.document;
-        if (!frameDoc) {
-          continue;
-        }
-
-        const found = searchInDocument(
-          frameDoc,
-          `${location} > iframe ${i}`
-        );
-        if (found) {
-          return found;
-        }
-      } catch (err) {
-        console.warn(
-          "[JobHawk Timesheet] Cannot access iframe",
-          i,
-          "in",
-          location,
-          ":",
-          err.message
-        );
-      }
-    }
-
-    return null;
-  }
-
-  const result = searchInDocument(document, "main document");
-  if (!result) {
-    console.warn("[JobHawk Timesheet] Element not found:", id);
-  }
-  return result;
-}
-
-function dateStringToDay(dateValue) {
-  const parts = dateValue.split("-");
-  const day = parseInt(parts[2], 10);
-  return String(day);
+function formatDateForDropdown(dateString) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()} 12:00:00 AM`;
 }
 
 function setFieldValue(id, value) {
-  const element = findElementInFrames(id);
+  const element = document.getElementById(id);
   if (!element) {
     console.error("[JobHawk Timesheet] Missing element:", id);
     return false;
@@ -90,10 +36,22 @@ function setFieldValue(id, value) {
 function fillTimesheet(data) {
   console.log("[JobHawk Timesheet] Filling timesheet with:", data);
 
-  const day = dateStringToDay(data.date);
-  console.log("[JobHawk Timesheet] Day from date:", day);
+  const startHourField = document.getElementById(FIELD_IDS.startHour);
 
-  setFieldValue(FIELD_IDS.day, day);
+  if (!startHourField) {
+    localStorage.setItem(PENDING_KEY, JSON.stringify(data));
+    console.log("[JobHawk Timesheet] Saved pending data, navigating to add entry");
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("add", "true");
+    window.location.href = url.toString();
+    return { success: true };
+  }
+
+  const formattedDate = formatDateForDropdown(data.date);
+  console.log("[JobHawk Timesheet] Formatted date:", formattedDate);
+
+  setFieldValue(FIELD_IDS.day, formattedDate);
   setFieldValue(FIELD_IDS.startHour, data.start.hour);
   setFieldValue(FIELD_IDS.startMinute, data.start.minute);
   setFieldValue(FIELD_IDS.startAmPm, data.start.period);
@@ -101,16 +59,23 @@ function fillTimesheet(data) {
   setFieldValue(FIELD_IDS.endMinute, data.end.minute);
   setFieldValue(FIELD_IDS.endAmPm, data.end.period);
 
-  const addButton = findElementInFrames(FIELD_IDS.addButton);
-  if (!addButton) {
-    console.error("[JobHawk Timesheet] Missing Add button:", FIELD_IDS.addButton);
+  const addBtn = document.getElementById(ADD_ENTRY_BUTTON_ID);
+  if (addBtn) {
+    addBtn.click();
+    console.log("✅ Added entry to table");
+  } else {
+    console.error("❌ Add button not found");
     return { success: false, error: "Add button not found" };
   }
 
-  addButton.click();
-  console.log("[JobHawk Timesheet] Clicked Add button");
-
   return { success: true };
+}
+
+const saved = localStorage.getItem(PENDING_KEY);
+if (saved) {
+  console.log("[JobHawk Timesheet] Resuming after reload");
+  localStorage.removeItem(PENDING_KEY);
+  fillTimesheet(JSON.parse(saved));
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
