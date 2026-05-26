@@ -562,6 +562,27 @@ setupLogFormTimeSelectors();
 
 fillTimesheetBtn.addEventListener("click", handleFillTimesheet);
 
+// Delete All Entries button (added once per popup open)
+const deleteAllBtn = document.getElementById("delete-all-entries-btn");
+if (!deleteAllBtn) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.id = "delete-all-entries-btn";
+  btn.className = "btn-delete";
+  btn.textContent = "Delete All Entries";
+  btn.style.width = "100%";
+  btn.style.marginTop = "10px";
+
+  entriesListEl.insertAdjacentElement("afterend", btn);
+
+  btn.addEventListener("click", async () => {
+    entries = [];
+    await saveEntries();
+    renderEntries();
+    showMessage("All entries cleared", "success");
+  });
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   showMessage("");
