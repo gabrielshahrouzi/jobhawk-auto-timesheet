@@ -464,12 +464,13 @@ function collectTimesheetPayload() {
 async function handleFillTimesheet() {
   showMessage("");
 
-  const payload = collectTimesheetPayload();
-  if (!payload) {
+  if (entries.length === 0) {
+    showMessage("No saved entries to fill.", "error");
     return;
   }
 
-  console.log("Sending timesheet data:", payload);
+  const payload = entries;
+  console.log("Sending all entries:", payload.length);
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) {
@@ -478,6 +479,11 @@ async function handleFillTimesheet() {
   }
 
   try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["content.js"],
+    });
+
     const response = await chrome.tabs.sendMessage(tab.id, {
       action: "fillTimesheet",
       data: payload,
@@ -486,7 +492,7 @@ async function handleFillTimesheet() {
     console.log("Fill timesheet response:", response);
 
     if (response?.success) {
-      showMessage("Timesheet filled on page.", "success");
+      showMessage(response.message || "Timesheet filled on page.", "success");
     } else {
       showMessage(response?.error || "Could not fill timesheet.", "error");
     }
@@ -560,6 +566,27 @@ dateInput.value = getTodayDateString();
 setupLogFormTimeSelectors();
 
 fillTimesheetBtn.addEventListener("click", handleFillTimesheet);
+
+// Delete All Entries button (added once per popup open)
+const deleteAllBtn = document.getElementById("delete-all-entries-btn");
+if (!deleteAllBtn) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.id = "delete-all-entries-btn";
+  btn.className = "btn-delete";
+  btn.textContent = "Delete All Entries";
+  btn.style.width = "100%";
+  btn.style.marginTop = "10px";
+
+  entriesListEl.insertAdjacentElement("afterend", btn);
+
+  btn.addEventListener("click", async () => {
+    entries = [];
+    await saveEntries();
+    renderEntries();
+    showMessage("All entries cleared", "success");
+  });
+}
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
