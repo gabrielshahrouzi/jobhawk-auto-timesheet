@@ -464,8 +464,13 @@ function collectTimesheetPayload() {
 async function handleFillTimesheet() {
   showMessage("");
 
+  if (entries.length === 0) {
+    showMessage("No saved entries to fill.", "error");
+    return;
+  }
+
   const payload = entries;
-  console.log("Sending timesheet data (all entries):", payload);
+  console.log("Sending all entries:", payload.length);
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) {
@@ -487,7 +492,7 @@ async function handleFillTimesheet() {
     console.log("Fill timesheet response:", response);
 
     if (response?.success) {
-      showMessage("Timesheet filled on page.", "success");
+      showMessage(response.message || "Timesheet filled on page.", "success");
     } else {
       showMessage(response?.error || "Could not fill timesheet.", "error");
     }

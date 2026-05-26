@@ -1,13 +1,5 @@
 console.log("✅ content.js loaded on JobHawk");
 
-if (window.__JOBHAWK_RUNNING__) {
-  console.log("⚠️ Duplicate execution blocked");
-} else {
-  window.__JOBHAWK_RUNNING__ = true;
-}
-
-const PENDING_KEY = "pendingTimesheet";
-
 const FIELD_IDS = {
   day: "Skin_body_ManageTimesheetControl_Day1",
   startHour: "Skin_body_ManageTimesheetControl_StartHour1",
@@ -19,6 +11,8 @@ const FIELD_IDS = {
 };
 
 const ADD_ENTRY_BUTTON_ID = "Skin_body_ManageTimesheetControl_ctl25";
+const PENDING_KEY = "pendingTimesheet";
+const CREATING_ROW_KEY = "jobhawkCreatingRow";
 
 function formatDateForDropdown(dateString) {
   const [year, month, day] = dateString.split("-").map(Number);
@@ -39,16 +33,22 @@ function setFieldValue(id, value) {
   return true;
 }
 
+function snapMinuteToQuarter(minutes) {
+  const snapped = Math.round(minutes / 15) * 15;
+  return snapped === 60 ? 0 : snapped;
+}
+
 function parseISOTime(isoString) {
   const date = new Date(isoString);
 
   let hours = date.getHours();
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-
+  const minutes = String(snapMinuteToQuarter(date.getMinutes())).padStart(2, "0");
   const period = hours >= 12 ? "PM" : "AM";
 
   hours = hours % 12;
-  if (hours === 0) hours = 12;
+  if (hours === 0) {
+    hours = 12;
+  }
 
   return {
     hour: String(hours),
@@ -57,144 +57,243 @@ function parseISOTime(isoString) {
   };
 }
 
+function normalizeEntry(data) {
+  const date =
+    data.date ||
+    (data.start ? new Date(data.start).toISOString().slice(0, 10) : null);
+
+  return {
+    date,
+    start: data.start,
+    end: data.end,
+    note: data.note || "",
+  };
+}
+
+function normalizeQueue(data) {
+  let entries = Array.isArray(data) ? [...data] : [data];
+
+  if (Array.isArray(entries[0]) && entries[0].length) {
+    entries = entries[0];
+  }
+
+  return entries
+    .map(normalizeEntry)
+    .filter((entry) => entry.date && entry.start && entry.end);
+}
+
 function navigateToAddEntry() {
   const url = new URL(window.location.href);
   url.searchParams.set("add", "true");
   window.location.href = url.toString();
 }
 
-function waitForFormReady(callback) {
-  const interval = setInterval(() => {
-    const day = document.getElementById("Skin_body_ManageTimesheetControl_Day1");
-    const start = document.getElementById(
-      "Skin_body_ManageTimesheetControl_StartHour1"
-    );
-    const addBtn = document.getElementById(
-      "Skin_body_ManageTimesheetControl_ctl25"
-    );
+function isFormReady() {
+  const day = document.getElementById(FIELD_IDS.day);
+  const start = document.getElementById(FIELD_IDS.startHour);
+  const addBtn = document.getElementById(ADD_ENTRY_BUTTON_ID);
+  return !!(day && start && addBtn);
+}
 
-    if (day && start && addBtn) {
+function waitForFormReady(callback, maxWaitMs = 8000, onTimeout) {
+  const start = Date.now();
+
+  const interval = setInterval(() => {
+    if (Date.now() - start > maxWaitMs) {
       clearInterval(interval);
-      console.log("✅ Form fully ready");
+      console.error("[JobHawk Timesheet] Timed out waiting for form");
+      if (onTimeout) {
+        onTimeout();
+      }
+      return;
+    }
+
+    if (isFormReady()) {
+      clearInterval(interval);
+      localStorage.removeItem(CREATING_ROW_KEY);
       callback();
     }
   }, 100);
 }
 
-const cancelBtn = document.querySelector('input[value="Cancel"]');
-if (cancelBtn) {
-  cancelBtn.addEventListener("click", () => {
-    localStorage.removeItem("pendingTimesheet");
-    console.log("🛑 Autofill canceled");
-  });
+function waitForTimeFieldsStable(callback, maxWaitMs = 5000) {
+  let lastValue = null;
+  let stableCount = 0;
+  const start = Date.now();
+
+  const interval = setInterval(() => {
+    if (Date.now() - start > maxWaitMs) {
+      clearInterval(interval);
+      callback();
+      return;
+    }
+
+    const startHour = document.getElementById(FIELD_IDS.startHour);
+    if (!startHour) {
+      return;
+    }
+
+    const currentValue = startHour.value;
+    if (currentValue === lastValue) {
+      stableCount++;
+      if (stableCount >= 3) {
+        clearInterval(interval);
+        callback();
+      }
+    } else {
+      stableCount = 0;
+      lastValue = currentValue;
+    }
+  }, 100);
 }
 
-function normalizeEntries(entriesOrEntry) {
-  if (Array.isArray(entriesOrEntry)) {
-    return entriesOrEntry;
-  }
-  return [entriesOrEntry];
+function waitForAddButton(callback, maxWaitMs = 5000) {
+  const start = Date.now();
+
+  const interval = setInterval(() => {
+    if (Date.now() - start > maxWaitMs) {
+      clearInterval(interval);
+      console.error("[JobHawk Timesheet] Timed out waiting for Add button");
+      return;
+    }
+
+    const btn = document.getElementById(ADD_ENTRY_BUTTON_ID);
+    if (btn) {
+      clearInterval(interval);
+      callback(btn);
+    }
+  }, 100);
 }
 
-function fillTimesheet(entriesOrEntry, isResuming = false) {
-  console.log("===== START fillTimesheet =====");
-  console.log("Input:", entriesOrEntry);
-  console.log("Stored pending:", localStorage.getItem(PENDING_KEY));
+function fillFields(entry) {
+  const formattedDate = formatDateForDropdown(entry.date);
+  const start = parseISOTime(entry.start);
+  const end = parseISOTime(entry.end);
 
-  const entries = normalizeEntries(entriesOrEntry);
-  const current = entries[0];
-
-  console.log("Normalized entries:", entries);
-  console.log("Current entry:", current);
-  console.log("Entry count:", entries.length);
-
-  if (!current) {
-    localStorage.removeItem(PENDING_KEY);
-    return { success: true };
-  }
-
-  console.log("[JobHawk Timesheet] Filling timesheet with entry:", current);
-
-  const startHourField = document.getElementById(FIELD_IDS.startHour);
-
-  if (!startHourField) {
-    localStorage.setItem(PENDING_KEY, JSON.stringify(entries));
-    console.log("Navigating to Add Entry page");
-    navigateToAddEntry();
-    return { success: true };
-  }
-
-  const formattedDate = formatDateForDropdown(current.date);
-  console.log("[JobHawk Timesheet] Formatted date:", formattedDate);
-
-  const start = parseISOTime(current.start);
-  const end = parseISOTime(current.end);
+  console.log("[JobHawk Timesheet] Setting date:", formattedDate);
+  console.log("[JobHawk Timesheet] Setting times:", start, end);
 
   setFieldValue(FIELD_IDS.day, formattedDate);
-
   setFieldValue(FIELD_IDS.startHour, start.hour);
   setFieldValue(FIELD_IDS.startMinute, start.minute);
   setFieldValue(FIELD_IDS.startAmPm, start.period);
-
   setFieldValue(FIELD_IDS.endHour, end.hour);
   setFieldValue(FIELD_IDS.endMinute, end.minute);
   setFieldValue(FIELD_IDS.endAmPm, end.period);
+}
 
-  function waitForAddButton(callback) {
-    const interval = setInterval(() => {
-      const btn = document.getElementById(ADD_ENTRY_BUTTON_ID);
+function fillAndSubmit(entry, remainingEntries) {
+  waitForTimeFieldsStable(() => {
+    fillFields(entry);
 
-      if (btn) {
-        clearInterval(interval);
-        callback(btn);
-      }
-    }, 100);
+    setTimeout(() => {
+      waitForAddButton((addBtn) => {
+        setTimeout(() => {
+          remainingEntries.shift();
+
+          if (remainingEntries.length > 0) {
+            localStorage.setItem(
+              PENDING_KEY,
+              JSON.stringify(remainingEntries)
+            );
+            console.log(
+              `[JobHawk Timesheet] ${remainingEntries.length} entries left`
+            );
+          } else {
+            localStorage.removeItem(PENDING_KEY);
+            localStorage.removeItem(CREATING_ROW_KEY);
+            console.log("[JobHawk Timesheet] All entries done");
+          }
+
+          addBtn.click();
+        }, 400);
+      });
+    }, 300);
+  });
+}
+
+function processNextEntry(entries) {
+  if (!entries.length) {
+    localStorage.removeItem(PENDING_KEY);
+    localStorage.removeItem(CREATING_ROW_KEY);
+    return;
   }
 
-  console.log("🚀 Submitting entry:", current);
+  const current = entries[0];
+  console.log(
+    `[JobHawk Timesheet] Processing entry (1 of ${entries.length} remaining)`
+  );
 
-  waitForAddButton((addBtn) => {
-    setTimeout(() => {
-      addBtn.click();
-    }, 100);
-    console.log("✅ Added entry to table");
+  if (!isFormReady()) {
+    const creating = localStorage.getItem(CREATING_ROW_KEY) === "true";
 
-    console.log("✅ BEFORE SHIFT:", entries);
-    entries.shift();
-    console.log("✅ AFTER SHIFT:", entries);
-    console.log("Remaining entries:", entries.length);
-
-    if (entries.length > 0) {
-      console.log("💾 SAVING updated entries:", entries);
+    if (!creating) {
+      console.log("[JobHawk Timesheet] Creating new row");
+      localStorage.setItem(CREATING_ROW_KEY, "true");
       localStorage.setItem(PENDING_KEY, JSON.stringify(entries));
-      console.log("➡️ Preparing next entry — creating new row");
       navigateToAddEntry();
       return;
     }
 
-    localStorage.removeItem(PENDING_KEY);
-    console.log("[JobHawk Timesheet] All entries processed");
-  });
-
-  return { success: true };
-}
-
-const saved = localStorage.getItem(PENDING_KEY);
-if (saved) {
-  console.log("🔥 RESUME TRIGGERED");
-  console.log("Saved from localStorage:", saved);
-  console.log("Resuming after reload");
-
-  let entries = JSON.parse(saved);
-
-  if (Array.isArray(entries) && Array.isArray(entries[0])) {
-    console.log("⚠️ Fixing nested entries");
-    entries = entries[0];
+    console.log("[JobHawk Timesheet] Waiting for row to load…");
+    waitForFormReady(
+      () => {
+        console.log("[JobHawk Timesheet] Row loaded — filling");
+        fillAndSubmit(entries[0], entries);
+      },
+      8000,
+      () => {
+        console.log("[JobHawk Timesheet] Retry navigation");
+        localStorage.removeItem(CREATING_ROW_KEY);
+        processNextEntry(entries);
+      }
+    );
+    return;
   }
 
   waitForFormReady(() => {
-    fillTimesheet(entries, true);
+    fillAndSubmit(current, entries);
   });
+}
+
+function fillTimesheet(data) {
+  const entries = normalizeQueue(data);
+
+  if (!entries.length) {
+    return { success: false, error: "No valid entries to fill" };
+  }
+
+  localStorage.removeItem(CREATING_ROW_KEY);
+  localStorage.setItem(PENDING_KEY, JSON.stringify(entries));
+  processNextEntry(entries);
+
+  return {
+    success: true,
+    message: `Filling ${entries.length} entries…`,
+  };
+}
+
+const cancelBtn = document.querySelector('input[value="Cancel"]');
+if (cancelBtn) {
+  cancelBtn.addEventListener("click", () => {
+    localStorage.removeItem(PENDING_KEY);
+    localStorage.removeItem(CREATING_ROW_KEY);
+    console.log("[JobHawk Timesheet] Autofill canceled");
+  });
+}
+
+const pending = localStorage.getItem(PENDING_KEY);
+if (!pending) {
+  localStorage.removeItem(CREATING_ROW_KEY);
+}
+
+if (pending && !window.__JOBHAWK_RESUME_RUNNING) {
+  window.__JOBHAWK_RESUME_RUNNING = true;
+  console.log("[JobHawk Timesheet] Resuming queued entries");
+  setTimeout(() => {
+    processNextEntry(normalizeQueue(JSON.parse(pending)));
+    window.__JOBHAWK_RESUME_RUNNING = false;
+  }, 200);
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
