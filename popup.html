@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Log Session</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      margin: 0;
+      padding: 16px;
+      width: 320px;
+      max-height: 520px;
+      overflow-y: auto;
+      color: #1a1a1a;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+
+    input[type="text"],
+    input[type="date"],
+    select {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+      background: white;
+    }
+
+    .time-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .time-row select {
+      flex: 1;
+      margin-bottom: 0;
+      min-width: 0;
+      padding: 6px 4px;
+      font-size: 13px;
+    }
+
+    .time-row .time-minute {
+      flex: 0.9;
+    }
+
+    .time-row .time-period {
+      flex: 0.8;
+    }
+
+    input:focus,
+    select:focus {
+      outline: none;
+      border-color: #4a90d9;
+    }
+
+    button {
+      padding: 8px 12px;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    #log-btn {
+      width: 100%;
+      padding: 10px;
+      background: #2563eb;
+      color: white;
+      font-size: 14px;
+    }
+
+    #log-btn:hover {
+      background: #1d4ed8;
+    }
+
+    #log-btn:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+
+    #fill-timesheet-btn {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 12px;
+      background: #059669;
+      color: white;
+      font-size: 14px;
+    }
+
+    #fill-timesheet-btn:hover {
+      background: #047857;
+    }
+
+    #message {
+      margin-top: 10px;
+      font-size: 13px;
+      min-height: 18px;
+    }
+
+    #message.error {
+      color: #b91c1c;
+    }
+
+    #message.success {
+      color: #15803d;
+    }
+
+    .entries-section {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .entries-section h2 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    #entries-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .empty-state {
+      color: #6b7280;
+      font-size: 13px;
+      margin: 0;
+    }
+
+    .entry {
+      padding: 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      background: #f9fafb;
+    }
+
+    .entry-times {
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .entry-meta {
+      font-size: 13px;
+      color: #4b5563;
+      margin-bottom: 8px;
+    }
+
+    .entry-note {
+      font-size: 13px;
+      margin-bottom: 8px;
+      word-break: break-word;
+    }
+
+    .entry-note.empty {
+      color: #9ca3af;
+      font-style: italic;
+    }
+
+    .entry-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-edit {
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+
+    .btn-edit:hover {
+      background: #c7d2fe;
+    }
+
+    .btn-delete {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .btn-delete:hover {
+      background: #fecaca;
+    }
+
+    .btn-save {
+      background: #2563eb;
+      color: white;
+    }
+
+    .btn-save:hover {
+      background: #1d4ed8;
+    }
+
+    .btn-cancel {
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .btn-cancel:hover {
+      background: #d1d5db;
+    }
+
+    .entry-edit label {
+      margin-top: 4px;
+    }
+
+    .entry-edit .edit-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <form id="log-form">
+    <label for="date">Date</label>
+    <input type="date" id="date" name="date" required />
+
+    <div id="log-time-fields"></div>
+
+    <label for="note">Note (optional)</label>
+    <input type="text" id="note" name="note" placeholder="What did you work on?" />
+
+    <button type="submit" id="log-btn">Log Session</button>
+    <button type="button" id="fill-timesheet-btn">Fill Timesheet</button>
+  </form>
+
+  <p id="message" role="status" aria-live="polite"></p>
+
+  <section class="entries-section">
+    <h2>Saved entries</h2>
+    <div id="entries-list"></div>
+  </section>
+
+  <script src="popup.js"></script>
+</body>
+</html>

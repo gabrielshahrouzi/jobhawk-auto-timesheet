@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "JobHawk Auto Timesheet",
+  "version": "1.0.0",
+  "description": "Log work sessions with hours and notes.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://jobhawk.studentemployment.ngwebsolutions.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Log work session"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://jobhawk.studentemployment.ngwebsolutions.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
