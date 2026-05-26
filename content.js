@@ -72,7 +72,7 @@ function normalizeEntries(entriesOrEntry) {
   return [entriesOrEntry];
 }
 
-function fillTimesheet(entriesOrEntry) {
+function fillTimesheet(entriesOrEntry, isResuming = false) {
   const entries = normalizeEntries(entriesOrEntry);
   const current = entries[0];
 
@@ -87,7 +87,7 @@ function fillTimesheet(entriesOrEntry) {
 
   if (!startHourField) {
     localStorage.setItem(PENDING_KEY, JSON.stringify(entries));
-    console.log("[JobHawk Timesheet] Saved pending entries, navigating to add entry");
+    console.log("Navigating to Add Entry page");
     navigateToAddEntry();
     return { success: true };
   }
@@ -126,8 +126,7 @@ function fillTimesheet(entriesOrEntry) {
     entries.shift();
     if (entries.length > 0) {
       localStorage.setItem(PENDING_KEY, JSON.stringify(entries));
-      console.log("[JobHawk Timesheet] Remaining entries:", entries.length);
-      navigateToAddEntry();
+      console.log("Waiting for page reload to process next entry");
       return;
     }
 
@@ -140,8 +139,21 @@ function fillTimesheet(entriesOrEntry) {
 
 const saved = localStorage.getItem(PENDING_KEY);
 if (saved) {
-  console.log("[JobHawk Timesheet] Resuming after reload");
-  fillTimesheet(JSON.parse(saved));
+  console.log("Resuming after reload");
+
+  const entries = JSON.parse(saved);
+
+  const interval = setInterval(() => {
+    const ready = document.getElementById(
+      "Skin_body_ManageTimesheetControl_Day1"
+    );
+
+    if (ready) {
+      clearInterval(interval);
+      console.log("Form ready → continuing batch");
+      fillTimesheet(entries, true);
+    }
+  }, 100);
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
