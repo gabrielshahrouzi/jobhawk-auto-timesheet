@@ -63,6 +63,24 @@ function navigateToAddEntry() {
   window.location.href = url.toString();
 }
 
+function waitForFormReady(callback) {
+  const interval = setInterval(() => {
+    const day = document.getElementById("Skin_body_ManageTimesheetControl_Day1");
+    const start = document.getElementById(
+      "Skin_body_ManageTimesheetControl_StartHour1"
+    );
+    const addBtn = document.getElementById(
+      "Skin_body_ManageTimesheetControl_ctl25"
+    );
+
+    if (day && start && addBtn) {
+      clearInterval(interval);
+      console.log("✅ Form fully ready");
+      callback();
+    }
+  }, 100);
+}
+
 const cancelBtn = document.querySelector('input[value="Cancel"]');
 if (cancelBtn) {
   cancelBtn.addEventListener("click", () => {
@@ -136,7 +154,9 @@ function fillTimesheet(entriesOrEntry, isResuming = false) {
   console.log("🚀 Submitting entry:", current);
 
   waitForAddButton((addBtn) => {
-    addBtn.click();
+    setTimeout(() => {
+      addBtn.click();
+    }, 100);
     console.log("✅ Added entry to table");
 
     console.log("✅ BEFORE SHIFT:", entries);
@@ -147,7 +167,8 @@ function fillTimesheet(entriesOrEntry, isResuming = false) {
     if (entries.length > 0) {
       console.log("💾 SAVING updated entries:", entries);
       localStorage.setItem(PENDING_KEY, JSON.stringify(entries));
-      console.log("Waiting for page reload to process next entry");
+      console.log("➡️ Preparing next entry — creating new row");
+      navigateToAddEntry();
       return;
     }
 
@@ -164,19 +185,16 @@ if (saved) {
   console.log("Saved from localStorage:", saved);
   console.log("Resuming after reload");
 
-  const entries = JSON.parse(saved);
+  let entries = JSON.parse(saved);
 
-  const interval = setInterval(() => {
-    const ready = document.getElementById(
-      "Skin_body_ManageTimesheetControl_Day1"
-    );
+  if (Array.isArray(entries) && Array.isArray(entries[0])) {
+    console.log("⚠️ Fixing nested entries");
+    entries = entries[0];
+  }
 
-    if (ready) {
-      clearInterval(interval);
-      console.log("Form ready → continuing batch");
-      fillTimesheet(entries, true);
-    }
-  }, 100);
+  waitForFormReady(() => {
+    fillTimesheet(entries, true);
+  });
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
