@@ -33,40 +33,107 @@ function setFieldValue(id, value) {
   return true;
 }
 
-function fillTimesheet(data) {
-  console.log("[JobHawk Timesheet] Filling timesheet with:", data);
+function parseISOTime(isoString) {
+  const date = new Date(isoString);
+
+  let hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  const period = hours >= 12 ? "PM" : "AM";
+
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+
+  return {
+    hour: String(hours),
+    minute: minutes,
+    period,
+  };
+}
+
+function navigateToAddEntry() {
+  const url = new URL(window.location.href);
+  url.searchParams.set("add", "true");
+  window.location.href = url.toString();
+}
+
+const cancelBtn = document.querySelector('input[value="Cancel"]');
+if (cancelBtn) {
+  cancelBtn.addEventListener("click", () => {
+    localStorage.removeItem("pendingTimesheet");
+    console.log("🛑 Autofill canceled");
+  });
+}
+
+function normalizeEntries(entriesOrEntry) {
+  if (Array.isArray(entriesOrEntry)) {
+    return entriesOrEntry;
+  }
+  return [entriesOrEntry];
+}
+
+function fillTimesheet(entriesOrEntry) {
+  const entries = normalizeEntries(entriesOrEntry);
+  const current = entries[0];
+
+  if (!current) {
+    localStorage.removeItem(PENDING_KEY);
+    return { success: true };
+  }
+
+  console.log("[JobHawk Timesheet] Filling timesheet with entry:", current);
 
   const startHourField = document.getElementById(FIELD_IDS.startHour);
 
   if (!startHourField) {
-    localStorage.setItem(PENDING_KEY, JSON.stringify(data));
-    console.log("[JobHawk Timesheet] Saved pending data, navigating to add entry");
-
-    const url = new URL(window.location.href);
-    url.searchParams.set("add", "true");
-    window.location.href = url.toString();
+    localStorage.setItem(PENDING_KEY, JSON.stringify(entries));
+    console.log("[JobHawk Timesheet] Saved pending entries, navigating to add entry");
+    navigateToAddEntry();
     return { success: true };
   }
 
-  const formattedDate = formatDateForDropdown(data.date);
+  const formattedDate = formatDateForDropdown(current.date);
   console.log("[JobHawk Timesheet] Formatted date:", formattedDate);
 
-  setFieldValue(FIELD_IDS.day, formattedDate);
-  setFieldValue(FIELD_IDS.startHour, data.start.hour);
-  setFieldValue(FIELD_IDS.startMinute, data.start.minute);
-  setFieldValue(FIELD_IDS.startAmPm, data.start.period);
-  setFieldValue(FIELD_IDS.endHour, data.end.hour);
-  setFieldValue(FIELD_IDS.endMinute, data.end.minute);
-  setFieldValue(FIELD_IDS.endAmPm, data.end.period);
+  const start = parseISOTime(current.start);
+  const end = parseISOTime(current.end);
 
-  const addBtn = document.getElementById(ADD_ENTRY_BUTTON_ID);
-  if (addBtn) {
+  setFieldValue(FIELD_IDS.day, formattedDate);
+
+  setFieldValue(FIELD_IDS.startHour, start.hour);
+  setFieldValue(FIELD_IDS.startMinute, start.minute);
+  setFieldValue(FIELD_IDS.startAmPm, start.period);
+
+  setFieldValue(FIELD_IDS.endHour, end.hour);
+  setFieldValue(FIELD_IDS.endMinute, end.minute);
+  setFieldValue(FIELD_IDS.endAmPm, end.period);
+
+  function waitForAddButton(callback) {
+    const interval = setInterval(() => {
+      const btn = document.getElementById(ADD_ENTRY_BUTTON_ID);
+
+      if (btn) {
+        clearInterval(interval);
+        callback(btn);
+      }
+    }, 100);
+  }
+
+  waitForAddButton((addBtn) => {
     addBtn.click();
     console.log("✅ Added entry to table");
-  } else {
-    console.error("❌ Add button not found");
-    return { success: false, error: "Add button not found" };
-  }
+
+    entries.shift();
+    if (entries.length > 0) {
+      localStorage.setItem(PENDING_KEY, JSON.stringify(entries));
+      console.log("[JobHawk Timesheet] Remaining entries:", entries.length);
+      navigateToAddEntry();
+      return;
+    }
+
+    localStorage.removeItem(PENDING_KEY);
+    console.log("[JobHawk Timesheet] All entries processed");
+  });
 
   return { success: true };
 }
@@ -74,7 +141,6 @@ function fillTimesheet(data) {
 const saved = localStorage.getItem(PENDING_KEY);
 if (saved) {
   console.log("[JobHawk Timesheet] Resuming after reload");
-  localStorage.removeItem(PENDING_KEY);
   fillTimesheet(JSON.parse(saved));
 }
 

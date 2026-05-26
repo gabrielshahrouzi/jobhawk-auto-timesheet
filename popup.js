@@ -464,12 +464,8 @@ function collectTimesheetPayload() {
 async function handleFillTimesheet() {
   showMessage("");
 
-  const payload = collectTimesheetPayload();
-  if (!payload) {
-    return;
-  }
-
-  console.log("Sending timesheet data:", payload);
+  const payload = entries;
+  console.log("Sending timesheet data (all entries):", payload);
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) {
@@ -478,6 +474,11 @@ async function handleFillTimesheet() {
   }
 
   try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["content.js"],
+    });
+
     const response = await chrome.tabs.sendMessage(tab.id, {
       action: "fillTimesheet",
       data: payload,
