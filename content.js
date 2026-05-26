@@ -1,5 +1,11 @@
 console.log("✅ content.js loaded on JobHawk");
 
+if (window.__JOBHAWK_RUNNING__) {
+  console.log("⚠️ Duplicate execution blocked");
+} else {
+  window.__JOBHAWK_RUNNING__ = true;
+}
+
 const PENDING_KEY = "pendingTimesheet";
 
 const FIELD_IDS = {
@@ -73,8 +79,16 @@ function normalizeEntries(entriesOrEntry) {
 }
 
 function fillTimesheet(entriesOrEntry, isResuming = false) {
+  console.log("===== START fillTimesheet =====");
+  console.log("Input:", entriesOrEntry);
+  console.log("Stored pending:", localStorage.getItem(PENDING_KEY));
+
   const entries = normalizeEntries(entriesOrEntry);
   const current = entries[0];
+
+  console.log("Normalized entries:", entries);
+  console.log("Current entry:", current);
+  console.log("Entry count:", entries.length);
 
   if (!current) {
     localStorage.removeItem(PENDING_KEY);
@@ -119,12 +133,19 @@ function fillTimesheet(entriesOrEntry, isResuming = false) {
     }, 100);
   }
 
+  console.log("🚀 Submitting entry:", current);
+
   waitForAddButton((addBtn) => {
     addBtn.click();
     console.log("✅ Added entry to table");
 
+    console.log("✅ BEFORE SHIFT:", entries);
     entries.shift();
+    console.log("✅ AFTER SHIFT:", entries);
+    console.log("Remaining entries:", entries.length);
+
     if (entries.length > 0) {
+      console.log("💾 SAVING updated entries:", entries);
       localStorage.setItem(PENDING_KEY, JSON.stringify(entries));
       console.log("Waiting for page reload to process next entry");
       return;
@@ -139,6 +160,8 @@ function fillTimesheet(entriesOrEntry, isResuming = false) {
 
 const saved = localStorage.getItem(PENDING_KEY);
 if (saved) {
+  console.log("🔥 RESUME TRIGGERED");
+  console.log("Saved from localStorage:", saved);
   console.log("Resuming after reload");
 
   const entries = JSON.parse(saved);
