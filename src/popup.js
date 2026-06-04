@@ -602,11 +602,6 @@ async function handleFillTimesheet() {
   }
 
   try {
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ["content.js"],
-    });
-
     const response = await chrome.tabs.sendMessage(tab.id, {
       action: "fillTimesheet",
       data: payload,

@@ -1,8 +1,7 @@
-console.log("✅ content.js loaded on JobHawk");
-
 const ADD_ENTRY_BUTTON_ID = "Skin_body_ManageTimesheetControl_ctl25";
 const TIMESHEET_CONTROL_PREFIX = "Skin_body_ManageTimesheetControl_";
 const PENDING_KEY = "pendingTimesheet";
+const PENDING_NOTE_KEY = "jobhawkPendingNote";
 const CREATING_ROW_KEY = "jobhawkCreatingRow";
 
 const RESUME_DELAY_MS = 1200;
@@ -10,6 +9,12 @@ const POST_FORM_DELAY_MS = 800;
 const PRE_CLICK_DELAY_MS = 500;
 const FORM_WAIT_MS = 30000;
 const ADD_BUTTON_WAIT_MS = 20000;
+const NOTE_MODAL_WAIT_MS = 15000;
+const NOTE_MODAL_CLOSE_WAIT_MS = 30000;
+
+const NOTE_MODAL_ID = "tseNotesRefreshModel";
+const NOTE_MODAL_TEXTAREA_ID = "Skin_body_txtTSERefreshNote";
+const NOTE_MODAL_SUBMIT_ID = "Skin_body_Button1";
 
 const FIELD_SUFFIXES = {
   day: "Day",
@@ -22,14 +27,248 @@ const FIELD_SUFFIXES = {
 };
 
 function buildFieldIds(rowIndex) {
-  const prefix = "Skin_body_ManageTimesheetControl_";
   const ids = {};
 
   for (const [key, suffix] of Object.entries(FIELD_SUFFIXES)) {
-    ids[key] = `${prefix}${suffix}${rowIndex}`;
+    ids[key] = `${TIMESHEET_CONTROL_PREFIX}${suffix}${rowIndex}`;
   }
 
   return ids;
+}
+
+function formatDateForNoteAriaLabel(dateString) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  const weekday = date.toLocaleDateString("en-US", { weekday: "long" });
+  const monthName = date.toLocaleDateString("en-US", { month: "long" });
+  const dayPadded = String(day).padStart(2, "0");
+  return `${weekday}, ${monthName} ${dayPadded}`;
+}
+
+function findNoteButtonForEntry(entry, rowIndex) {
+  if (rowIndex) {
+    const fields = buildFieldIds(rowIndex);
+    const anchor =
+      document.getElementById(fields.day) ||
+      document.getElementById(fields.startHour);
+    const row = anchor?.closest("tr");
+    const inRow = row?.querySelector("button.open-tseNotesRefreshModel");
+    if (inRow) {
+      return inRow;
+    }
+  }
+
+  const dateLabel = formatDateForNoteAriaLabel(entry.date);
+  const candidates = [
+    ...document.querySelectorAll("button.open-tseNotesRefreshModel"),
+  ].filter((btn) => {
+    const aria = btn.getAttribute("aria-label") || "";
+    return aria.includes(dateLabel);
+  });
+
+  if (!candidates.length) {
+    return null;
+  }
+
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
+
+  const withoutNote = candidates.filter(
+    (btn) => !(btn.getAttribute("data-value") || "").trim()
+  );
+  if (withoutNote.length) {
+    return withoutNote[withoutNote.length - 1];
+  }
+
+  return candidates[candidates.length - 1];
+}
+
+function waitForNoteButton(entry, rowIndex, callback, maxWaitMs, onTimeout) {
+  const tryFind = () => {
+    const btn = findNoteButtonForEntry(entry, rowIndex);
+    if (btn) {
+      callback(btn);
+      return true;
+    }
+    return false;
+  };
+
+  if (tryFind()) {
+    return;
+  }
+
+  const start = Date.now();
+  const interval = setInterval(() => {
+    if (tryFind()) {
+      clearInterval(interval);
+      return;
+    }
+
+    if (Date.now() - start > maxWaitMs) {
+      clearInterval(interval);
+      console.error("[JobHawk Timesheet] Timed out waiting for note button");
+      onTimeout?.();
+    }
+  }, 100);
+}
+
+function isNoteModalVisible() {
+  const modal = document.getElementById(NOTE_MODAL_ID);
+  return modal?.classList.contains("show") ?? false;
+}
+
+function waitForNoteModalReady(callback, maxWaitMs = NOTE_MODAL_WAIT_MS) {
+  const start = Date.now();
+
+  const interval = setInterval(() => {
+    const textarea = document.getElementById(NOTE_MODAL_TEXTAREA_ID);
+    const modalOpen =
+      isNoteModalVisible() ||
+      (textarea && textarea.offsetParent !== null);
+    if (textarea && modalOpen) {
+      clearInterval(interval);
+      callback(textarea);
+      return;
+    }
+
+    if (Date.now() - start > maxWaitMs) {
+      clearInterval(interval);
+      console.error("[JobHawk Timesheet] Timed out waiting for note modal");
+      callback(null);
+    }
+  }, 100);
+}
+
+function waitForNoteModalClosed(callback, maxWaitMs = NOTE_MODAL_CLOSE_WAIT_MS) {
+  const start = Date.now();
+
+  const interval = setInterval(() => {
+    if (!isNoteModalVisible()) {
+      clearInterval(interval);
+      setTimeout(callback, POST_FORM_DELAY_MS);
+      return;
+    }
+
+    if (Date.now() - start > maxWaitMs) {
+      clearInterval(interval);
+      callback();
+    }
+  }, 100);
+}
+
+function submitNoteViaModal(entry, openBtn, done) {
+  console.log(
+    "[JobHawk Timesheet] Opening note modal:",
+    openBtn.getAttribute("data-id") || openBtn.getAttribute("aria-label")
+  );
+
+  openBtn.click();
+
+  waitForNoteModalReady((textarea) => {
+    if (!textarea) {
+      done?.(false);
+      return;
+    }
+
+    setFieldWithRetry(NOTE_MODAL_TEXTAREA_ID, entry.note, 0, (ok) => {
+      if (!ok) {
+        done?.(false);
+        return;
+      }
+
+      const submitBtn = document.getElementById(NOTE_MODAL_SUBMIT_ID);
+      if (!submitBtn) {
+        console.error("[JobHawk Timesheet] Missing note submit button");
+        done?.(false);
+        return;
+      }
+
+      console.log("[JobHawk Timesheet] Submitting note via modal");
+      localStorage.removeItem(PENDING_NOTE_KEY);
+      submitBtn.click();
+
+      waitForNoteModalClosed(() => {
+        done?.(true);
+      });
+    });
+  });
+}
+
+function stashPendingNote(entry, rowIndex) {
+  if (!entry.note) {
+    localStorage.removeItem(PENDING_NOTE_KEY);
+    return;
+  }
+
+  localStorage.setItem(
+    PENDING_NOTE_KEY,
+    JSON.stringify({
+      note: entry.note,
+      rowIndex,
+      date: entry.date,
+      start: entry.start,
+      end: entry.end,
+    })
+  );
+}
+
+function applyNoteToAddedRow(entry, rowIndexBeforeAdd, done) {
+  if (!entry.note) {
+    localStorage.removeItem(PENDING_NOTE_KEY);
+    done?.();
+    return;
+  }
+
+  waitForNoteButton(
+    entry,
+    rowIndexBeforeAdd,
+    (openBtn) => {
+      submitNoteViaModal(entry, openBtn, (ok) => {
+        if (!ok) {
+          console.warn("[JobHawk Timesheet] Could not save note via modal");
+        }
+        done?.();
+      });
+    },
+    FORM_WAIT_MS,
+    () => {
+      localStorage.removeItem(PENDING_NOTE_KEY);
+      done?.();
+    }
+  );
+}
+
+function applyStoredPendingNote(done) {
+  const raw = localStorage.getItem(PENDING_NOTE_KEY);
+  if (!raw) {
+    done();
+    return;
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    localStorage.removeItem(PENDING_NOTE_KEY);
+    done();
+    return;
+  }
+
+  const entry = {
+    date: payload.date,
+    start: payload.start,
+    end: payload.end,
+    note: payload.note || "",
+  };
+
+  if (!entry.note) {
+    localStorage.removeItem(PENDING_NOTE_KEY);
+    done();
+    return;
+  }
+
+  applyNoteToAddedRow(entry, payload.rowIndex, done);
 }
 
 function isOnAddPage() {
@@ -433,7 +672,7 @@ function fillFieldsSequential(entry, fields, done) {
   setNext();
 }
 
-function fillAndSubmit(entry, remainingEntries, fields) {
+function fillAndSubmit(entry, remainingEntries, fields, rowIndex) {
   console.log("[JobHawk Timesheet] Filling entry…");
 
   fillFieldsSequential(entry, fields, () => {
@@ -466,6 +705,7 @@ function fillAndSubmit(entry, remainingEntries, fields) {
 
       waitForAddButton((addBtn) => {
         setTimeout(() => {
+          stashPendingNote(entry, rowIndex);
           remainingEntries.shift();
 
           if (remainingEntries.length > 0) {
@@ -485,6 +725,7 @@ function fillAndSubmit(entry, remainingEntries, fields) {
 
           window.__JOBHAWK_FILLING = false;
           addBtn.click();
+          applyNoteToAddedRow(entry, rowIndex);
         }, PRE_CLICK_DELAY_MS);
       });
     };
@@ -500,7 +741,7 @@ function beginFill(entries) {
         `[JobHawk Timesheet] Form ready on row ${ctx.rowIndex} — filling after delay`
       );
       setTimeout(
-        () => fillAndSubmit(entries[0], entries, ctx.fields),
+        () => fillAndSubmit(entries[0], entries, ctx.fields, ctx.rowIndex),
         POST_FORM_DELAY_MS
       );
     },
@@ -545,6 +786,7 @@ function openAddPageForQueue(entries, forceNavigate = false) {
 function processNextEntry(entries) {
   if (!entries.length) {
     localStorage.removeItem(PENDING_KEY);
+    localStorage.removeItem(PENDING_NOTE_KEY);
     localStorage.removeItem(CREATING_ROW_KEY);
     window.__JOBHAWK_FILLING = false;
     return;
@@ -580,6 +822,7 @@ function fillTimesheet(data) {
   }
 
   localStorage.removeItem(CREATING_ROW_KEY);
+  localStorage.removeItem(PENDING_NOTE_KEY);
   window.__JOBHAWK_FILLING = false;
   localStorage.setItem(PENDING_KEY, JSON.stringify(entries));
   processNextEntry(entries);
@@ -594,6 +837,7 @@ const cancelBtn = document.querySelector('input[value="Cancel"]');
 if (cancelBtn) {
   cancelBtn.addEventListener("click", () => {
     localStorage.removeItem(PENDING_KEY);
+    localStorage.removeItem(PENDING_NOTE_KEY);
     localStorage.removeItem(CREATING_ROW_KEY);
     window.__JOBHAWK_FILLING = false;
     console.log("[JobHawk Timesheet] Autofill canceled");
@@ -602,27 +846,39 @@ if (cancelBtn) {
 
 function scheduleResume() {
   const pending = localStorage.getItem(PENDING_KEY);
-  if (!pending) {
+  const pendingNote = localStorage.getItem(PENDING_NOTE_KEY);
+  if (!pending && !pendingNote) {
     localStorage.removeItem(CREATING_ROW_KEY);
     return;
   }
 
   const run = () => {
-    const entries = normalizeQueue(JSON.parse(pending));
-    console.log("[JobHawk Timesheet] Resuming queued entries:", entries.length);
-    logFormProbe();
+    applyStoredPendingNote(() => {
+      const stillPending = localStorage.getItem(PENDING_KEY);
+      if (!stillPending) {
+        localStorage.removeItem(CREATING_ROW_KEY);
+        return;
+      }
 
-    if (isFormReady()) {
+      const entries = normalizeQueue(JSON.parse(stillPending));
+      console.log(
+        "[JobHawk Timesheet] Resuming queued entries:",
+        entries.length
+      );
+      logFormProbe();
+
+      if (isFormReady()) {
+        processNextEntry(entries);
+        return;
+      }
+
+      if (!isOnAddPage()) {
+        openAddPageForQueue(entries);
+        return;
+      }
+
       processNextEntry(entries);
-      return;
-    }
-
-    if (!isOnAddPage()) {
-      openAddPageForQueue(entries);
-      return;
-    }
-
-    processNextEntry(entries);
+    });
   };
 
   if (document.readyState === "complete") {
