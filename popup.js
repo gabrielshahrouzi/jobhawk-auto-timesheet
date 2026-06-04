@@ -584,6 +584,93 @@ async function refreshAndRender() {
   renderEntries();
 }
 
+// --- Import / export ---
+
+let pendingImportMode = null;
+
+function handleExportCsv() {
+  showMessage("");
+  if (entries.length === 0) {
+    showMessage("No entries to export.", "error");
+    return;
+  }
+  window.TimesheetIO.exportCsv(entries);
+  showMessage(`Exported ${entries.length} entries as CSV.`, "success");
+}
+
+function handleExportPdf() {
+  showMessage("");
+  if (entries.length === 0) {
+    showMessage("No entries to export.", "error");
+    return;
+  }
+  window.TimesheetIO.exportPdf(entries);
+  showMessage(`Exported ${entries.length} entries as PDF.`, "success");
+}
+
+function openImportPicker(mode) {
+  pendingImportMode = mode;
+  const input = document.getElementById("import-file-input");
+  input.value = "";
+  input.click();
+}
+
+async function handleImportFile(file) {
+  const mode = pendingImportMode;
+  pendingImportMode = null;
+  if (!file || !mode) {
+    return;
+  }
+
+  showMessage("");
+
+  let text;
+  try {
+    text = await file.text();
+  } catch (err) {
+    console.error("Failed to read import file:", err);
+    showMessage("Could not read file.", "error");
+    return;
+  }
+
+  const { entries: imported, errors } = window.TimesheetIO.importCsv(text);
+  if (imported.length === 0) {
+    const detail = errors.length ? errors[0] : "No valid entries found.";
+    showMessage(detail, "error");
+    return;
+  }
+
+  if (mode === "replace") {
+    const ok = confirm(
+      `Replace all ${entries.length} saved entries with ${imported.length} imported entries?`
+    );
+    if (!ok) {
+      return;
+    }
+    entries = imported;
+  } else {
+    entries = entries.concat(imported);
+  }
+
+  try {
+    await saveEntries();
+    editingIndex = null;
+    renderEntries();
+    const suffix =
+      errors.length > 0
+        ? ` (${errors.length} row(s) skipped)`
+        : "";
+    showMessage(
+      `Imported ${imported.length} entries (${mode === "replace" ? "replaced" : "merged"}).${suffix}`,
+      "success"
+    );
+  } catch (err) {
+    console.error("Failed to save imported entries:", err);
+    showMessage("Could not save imported entries.", "error");
+    await loadEntries();
+  }
+}
+
 // --- Init ---
 
 const fillTimesheetBtn = document.getElementById("fill-timesheet-btn");
@@ -591,6 +678,21 @@ dateInput.value = getTodayDateString();
 setupLogFormTimeSelectors();
 
 fillTimesheetBtn.addEventListener("click", handleFillTimesheet);
+
+document.getElementById("export-csv-btn").addEventListener("click", handleExportCsv);
+document.getElementById("export-pdf-btn").addEventListener("click", handleExportPdf);
+document.getElementById("import-csv-merge-btn").addEventListener("click", () => {
+  openImportPicker("merge");
+});
+document.getElementById("import-csv-replace-btn").addEventListener("click", () => {
+  openImportPicker("replace");
+});
+document.getElementById("import-file-input").addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  if (file) {
+    handleImportFile(file);
+  }
+});
 
 // Delete All Entries button (added once per popup open)
 const deleteAllBtn = document.getElementById("delete-all-entries-btn");

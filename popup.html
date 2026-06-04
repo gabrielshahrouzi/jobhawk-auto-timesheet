@@ -222,6 +222,54 @@
       gap: 8px;
       margin-top: 8px;
     }
+
+    .io-section {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .io-section h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .io-hint {
+      margin: 0 0 10px;
+      font-size: 12px;
+      color: #6b7280;
+      line-height: 1.4;
+    }
+
+    .io-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .io-buttons button {
+      flex: 1 1 calc(50% - 4px);
+      min-width: 0;
+      background: #f3f4f6;
+      color: #1f2937;
+      border: 1px solid #d1d5db;
+    }
+
+    .io-buttons button:hover {
+      background: #e5e7eb;
+    }
+
+    .io-buttons .btn-io-primary {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border-color: #bfdbfe;
+    }
+
+    .io-buttons .btn-io-primary:hover {
+      background: #dbeafe;
+    }
   </style>
 </head>
 <body>
@@ -241,10 +289,25 @@
       <h2>Saved entries</h2>
       <div id="entries-list"></div>
     </section>
+
+    <section class="io-section">
+      <h2>Import / Export</h2>
+      <p class="io-hint">Export or back up entries as CSV or PDF. Import from CSV (same format as export).</p>
+      <div class="io-buttons">
+        <button type="button" id="export-csv-btn" class="btn-io-primary">Export CSV</button>
+        <button type="button" id="export-pdf-btn" class="btn-io-primary">Export PDF</button>
+      </div>
+      <div class="io-buttons">
+        <button type="button" id="import-csv-merge-btn">Import CSV (merge)</button>
+        <button type="button" id="import-csv-replace-btn">Import CSV (replace)</button>
+      </div>
+      <input type="file" id="import-file-input" accept=".csv,text/csv" hidden />
+    </section>
   </form>
 
   <p id="message" role="status" aria-live="polite"></p>
 
+  <script src="import-export.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
