@@ -188,10 +188,10 @@ function createEntry(dateValue, startIso, endIso, note) {
   };
 }
 
-function buildUpdatedEntry(entry, startIso, endIso, note) {
+function buildUpdatedEntry(entry, dateValue, startIso, endIso, note) {
   return {
     ...entry,
-    date: isoToDateString(startIso),
+    date: dateValue,
     start: startIso,
     end: endIso,
     hours: calculateHoursFromTimestamps(startIso, endIso),
@@ -342,8 +342,18 @@ function showEditForm(index) {
 function createEditForm(entry, index) {
   const card = document.createElement("div");
   card.className = "entry entry-edit";
-  const entryDate = getEntryDate(entry);
-  const getDateValue = () => entryDate;
+
+  const dateLabel = document.createElement("label");
+  dateLabel.setAttribute("for", `edit-date-${index}`);
+  dateLabel.textContent = "Date";
+
+  const dateField = document.createElement("input");
+  dateField.type = "date";
+  dateField.id = `edit-date-${index}`;
+  dateField.value = getEntryDate(entry);
+  dateField.required = true;
+
+  const getDateValue = () => dateField.value;
 
   const startTime = createTimeSelector(
     "Start time",
@@ -375,7 +385,7 @@ function createEditForm(entry, index) {
   saveBtn.className = "btn-save";
   saveBtn.textContent = "Save";
   saveBtn.addEventListener("click", () =>
-    handleSaveEdit(index, startTime, endTime, noteField)
+    handleSaveEdit(index, dateField, startTime, endTime, noteField)
   );
 
   const cancelBtn = document.createElement("button");
@@ -389,6 +399,8 @@ function createEditForm(entry, index) {
 
   actions.append(saveBtn, cancelBtn);
   card.append(
+    dateLabel,
+    dateField,
     startTime.label,
     startTime.row,
     endTime.label,
@@ -518,7 +530,14 @@ async function handleDelete(index) {
   }
 }
 
-async function handleSaveEdit(index, startTime, endTime, noteField) {
+async function handleSaveEdit(index, dateField, startTime, endTime, noteField) {
+  const dateValue = dateField.value;
+  if (!dateValue) {
+    alert("Please select a date.");
+    dateField.focus();
+    return;
+  }
+
   const startDate = startTime.getDate();
   const endDate = endTime.getDate();
 
@@ -540,7 +559,13 @@ async function handleSaveEdit(index, startTime, endTime, noteField) {
     return;
   }
 
-  const updated = buildUpdatedEntry(entry, startIso, endIso, noteField.value);
+  const updated = buildUpdatedEntry(
+    entry,
+    dateValue,
+    startIso,
+    endIso,
+    noteField.value
+  );
 
   try {
     await updateEntryAt(index, updated);
