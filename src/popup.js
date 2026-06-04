@@ -215,6 +215,69 @@ function getSortedIndices() {
     .sort((a, b) => new Date(b.entry.end) - new Date(a.entry.end));
 }
 
+function getEntryHours(entry) {
+  if (Number.isFinite(entry.hours) && entry.hours > 0) {
+    return entry.hours;
+  }
+  if (entry.start && entry.end) {
+    return calculateHoursFromTimestamps(entry.start, entry.end);
+  }
+  return 0;
+}
+
+function dateStringToLocalDate(dateString) {
+  const [year, month, day] = dateString.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function getWeekStartDate(date) {
+  const local = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = local.getDay();
+  const daysFromMonday = day === 0 ? 6 : day - 1;
+  local.setDate(local.getDate() - daysFromMonday);
+  return local;
+}
+
+function dateToKey(date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function formatWeekRange(weekStartKey) {
+  const start = dateStringToLocalDate(weekStartKey);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  const opts = { month: "short", day: "numeric" };
+  const startLabel = start.toLocaleDateString(undefined, opts);
+  const endLabel = end.toLocaleDateString(undefined, {
+    ...opts,
+    year: "numeric",
+  });
+  return `${startLabel} – ${endLabel}`;
+}
+
+function computeHoursSummary(entryList) {
+  const weekTotals = new Map();
+  let total = 0;
+
+  for (const entry of entryList) {
+    const hours = getEntryHours(entry);
+    total += hours;
+    const weekKey = dateToKey(getWeekStartDate(dateStringToLocalDate(getEntryDate(entry))));
+    weekTotals.set(weekKey, (weekTotals.get(weekKey) || 0) + hours);
+  }
+
+  const weeks = [...weekTotals.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([weekKey, hours]) => ({
+      weekKey,
+      hours,
+      range: formatWeekRange(weekKey),
+    }));
+
+  return { total, weeks };
+}
+
 // --- Storage ---
 
 async function loadEntries() {
@@ -252,7 +315,55 @@ async function updateEntryAt(index, updatedEntry) {
 
 // --- Rendering ---
 
+function renderHoursSummary() {
+  const summaryEl = document.getElementById("hours-summary");
+  if (!summaryEl) {
+    return;
+  }
+
+  summaryEl.innerHTML = "";
+  const { total, weeks } = computeHoursSummary(entries);
+  const currentWeekKey = dateToKey(getWeekStartDate(new Date()));
+
+  const totalRow = document.createElement("div");
+  totalRow.className = "summary-total";
+  totalRow.textContent = `Total: ${total.toFixed(2)} hrs`;
+  summaryEl.appendChild(totalRow);
+
+  if (weeks.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "summary-empty";
+    empty.textContent = "No hours logged yet";
+    summaryEl.appendChild(empty);
+    return;
+  }
+
+  const list = document.createElement("ul");
+  list.className = "summary-weeks";
+
+  for (const { weekKey, hours, range } of weeks) {
+    const item = document.createElement("li");
+    item.className =
+      "summary-week" + (weekKey === currentWeekKey ? " summary-week-current" : "");
+
+    const label = document.createElement("span");
+    label.className = "summary-week-label";
+    label.textContent =
+      weekKey === currentWeekKey ? `This week (${range})` : range;
+
+    const value = document.createElement("span");
+    value.className = "summary-week-hours";
+    value.textContent = `${hours.toFixed(2)} hrs`;
+
+    item.append(label, value);
+    list.appendChild(item);
+  }
+
+  summaryEl.appendChild(list);
+}
+
 function renderEntries() {
+  renderHoursSummary();
   entriesListEl.innerHTML = "";
   editingIndex = null;
 
@@ -285,7 +396,7 @@ function createEntryElement(entry, index) {
 
   const meta = document.createElement("div");
   meta.className = "entry-meta";
-  meta.textContent = `${entry.hours.toFixed(2)} hrs`;
+  meta.textContent = `${getEntryHours(entry).toFixed(2)} hrs`;
 
   const note = document.createElement("div");
   note.className = "entry-note" + (entry.note ? "" : " empty");

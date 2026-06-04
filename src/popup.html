@@ -133,6 +133,71 @@
       font-weight: 600;
     }
 
+    .summary-section {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .summary-section h2 {
+      margin: 0 0 10px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .hours-summary {
+      padding: 10px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      background: #f9fafb;
+    }
+
+    .summary-total {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1e3a8a;
+      margin-bottom: 8px;
+    }
+
+    .summary-empty {
+      margin: 0;
+      font-size: 13px;
+      color: #6b7280;
+    }
+
+    .summary-weeks {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .summary-week {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      font-size: 13px;
+      color: #374151;
+    }
+
+    .summary-week-current {
+      font-weight: 500;
+      color: #1d4ed8;
+    }
+
+    .summary-week-label {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .summary-week-hours {
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
     #entries-list {
       display: flex;
       flex-direction: column;
@@ -286,6 +351,11 @@
 
     <button type="submit" id="log-btn">Log Session</button>
     <button type="button" id="fill-timesheet-btn">Fill Timesheet</button>
+
+    <section class="summary-section">
+      <h2>Hours summary</h2>
+      <div id="hours-summary" class="hours-summary" aria-live="polite"></div>
+    </section>
 
     <section class="entries-section">
       <h2>Saved entries</h2>
