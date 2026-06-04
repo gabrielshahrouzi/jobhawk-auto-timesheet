@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "JobHawk Auto Timesheet",
+  "name": "Timesheet Autofill for JobHawk",
   "version": "1.0.0",
   "description": "Log work sessions with hours and notes.",
   "permissions": [
@@ -18,7 +18,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Log work session",
+    "default_title": "Timesheet Autofill for JobHawk",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
